@@ -1,0 +1,258 @@
+name: Python tests
+
+on:
+  push:
+    branches: [main, dev, feat/continuous-integration-testing, refactor/directory-organisation, feat/integrate-continuous-deployment]
+  pull_request:
+    branches: [main, dev, feat/continuous-integration-testing, refactor/directory-organisation, feat/integrate-continuous-deployment]
+
+jobs:
+  test_microservices:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.11.9'] # Add more versions here (But make sure the libraries are compatible with the versions)
+
+    steps:
+      # Python dependencies caching
+      - name: Cache Python dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          # Leverage caching for Python setup
+          cache: 'pip'
+
+      - name: Install dependencies (system, libraries, etc..)
+        run: |
+          # Issues with the next step when not using these commands
+          sudo apt-get update
+          sudo apt-get install -y libhdf5-dev libnetcdf-dev
+
+          chmod +x setup.sh
+          ./setup.sh
+
+          # Check dependencies installed
+          source venv/bin/activate
+          pip list
+
+      - name: Create the .env file
+        run: |
+          echo "MONGODB_URI=${{ secrets.MONGODB_URI }}" >> .env
+          echo "TOKEN_GENERATOR_SECRET_KEY=${{ secrets.TOKEN_GENERATOR_SECRET_KEY }}" >> .env
+          echo "DATA_RETRIEVAL_PORT=${{ secrets.DATA_RETRIEVAL_PORT }}" >> .env
+          echo "DATA_PROCESSING_PORT=${{ secrets.DATA_PROCESSING_PORT }}" >> .env
+          echo "MODEL_INFERENCE_PORT=${{ secrets.MODEL_INFERENCE_PORT }}" >> .env
+          echo "PREDICTIONS_COMBINER_PORT=${{ secrets.PREDICTIONS_COMBINER_PORT }}" >> .env
+          echo "WEB_APP_PORT=${{ secrets.WEB_APP_PORT }}" >> .env
+
+          # Set the hosts to be local for testing (No need for secrets here)
+          echo "DATA_RETRIEVAL_HOST"=http://127.0.0.1 >> .env
+          echo "DATA_PROCESSING_HOST"=http://127.0.0.1 >> .env
+          echo "MODEL_INFERENCE_HOST"=http://127.0.0.1 >> .env
+          echo "PREDICTIONS_COMBINER_HOST"=http://127.0.0.1 >> .env
+          echo "WEB_APP_HOST"=http://127.0.0.1 >> .env
+          
+          if [ ! -f .env ]; then
+            echo "The .env file was not created"
+            exit 1
+          fi
+      
+      - name: Run tests
+        env: 
+          IS_TESTING: "true" # Set the "IS_TESTING" environment variable to true for using the test database
+          PYTHONPATH: ${{ github.workspace }} # Set the PYTHONPATH to the current working directory
+        
+        run: |
+          source venv/bin/activate
+
+          # Run the tests, killing the servers after each test
+          pytest -v -s tests/test_login_redirect.py
+          pkill -f "uvicorn" || true
+          
+          pytest -v -s tests/test_user_authentication.py
+          pkill -f "uvicorn" || true
+
+          pytest -v -s tests/test_data_retrieval.py
+          pkill -f "uvicorn" || true
+          
+          pytest -v -s tests/test_data_processing.py
+          pkill -f "uvicorn" || true
+          
+          pytest -v -s tests/test_model_inference.py
+          pkill -f "uvicorn" || true
+
+          pytest -v -s tests/test_predictions_combiner.py
+          pkill -f "uvicorn" || true
+
+  test_local_deployment_script:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.11.9']
+    steps:
+      # Python dependencies caching
+      - name: Cache Python dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install Kind for Kubernetes
+        run: |
+          [ $(uname -m) = x86_64 ] && curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.25.0/kind-linux-amd64
+          [ $(uname -m) = aarch64 ] && curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.25.0/kind-linux-arm64
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
+
+      - name: Create the .env file
+        run: |
+          echo "MONGODB_URI=${{ secrets.MONGODB_URI }}" >> .env
+          echo "TOKEN_GENERATOR_SECRET_KEY=${{ secrets.TOKEN_GENERATOR_SECRET_KEY }}" >> .env
+          echo "DATA_RETRIEVAL_PORT=${{ secrets.DATA_RETRIEVAL_PORT }}" >> .env
+          echo "DATA_PROCESSING_PORT=${{ secrets.DATA_PROCESSING_PORT }}" >> .env
+          echo "MODEL_INFERENCE_PORT=${{ secrets.MODEL_INFERENCE_PORT }}" >> .env
+          echo "PREDICTIONS_COMBINER_PORT=${{ secrets.PREDICTIONS_COMBINER_PORT }}" >> .env
+          echo "WEB_APP_PORT=${{ secrets.WEB_APP_PORT }}" >> .env
+          echo "DATA_RETRIEVAL_HOST"=${{ secrets.DATA_RETRIEVAL_HOST }} >> .env
+          echo "DATA_PROCESSING_HOST"=${{ secrets.DATA_PROCESSING_HOST }} >> .env
+          echo "MODEL_INFERENCE_HOST"=${{ secrets.MODEL_INFERENCE_HOST }} >> .env
+          echo "PREDICTIONS_COMBINER_HOST"=${{ secrets.PREDICTIONS_COMBINER_HOST }} >> .env
+          echo "WEB_APP_HOST"=${{ secrets.WEB_APP_HOST }} >> .env
+          
+          if [ ! -f .env ]; then
+            echo "The .env file was not created"
+            exit 1
+          fi
+        
+      - name: Test the deployment script
+        run: |
+          chmod +x deploy.sh
+          ./deploy.sh
+
+      - name: Check status of the Kubernetes Cluster
+        run: |
+          kubectl get pods
+          kubectl get services
+          kubectl get deployments
+          kubectl get ingress
+
+  build_run_push_images:
+    needs: test_microservices # Only run this job if the 'test_microservices' job is successful
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.11.9'] 
+    
+    steps:  
+      # Note: Deleting uncessary files to prevent the error: "No space left on device"
+      - name: Delete unnecessary files and check disk space
+        run: |
+          df -h /
+          sudo rm -rf \
+                      "$AGENT_TOOLSDIRECTORY" \
+                      /opt/google/chrome \
+                      /opt/microsoft/msedge \
+                      /opt/microsoft/powershell \
+                      /opt/pipx \
+                      /opt/hostedtoolcache \
+                      /usr/lib/mono \
+                      /usr/local/julia* \
+                      /usr/local/lib/android \
+                      /usr/local/lib/node_modules \
+                      /usr/local/share/chromium \
+                      /usr/local/share/powershell \
+                      /usr/share/dotnet \
+                      /usr/share/swift
+          df -h /
+
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Create the .env file
+        run: |
+          echo "MONGODB_URI=${{ secrets.MONGODB_URI }}" >> .env
+          echo "TOKEN_GENERATOR_SECRET_KEY=${{ secrets.TOKEN_GENERATOR_SECRET_KEY }}" >> .env
+          echo "DATA_RETRIEVAL_PORT=${{ secrets.DATA_RETRIEVAL_PORT }}" >> .env
+          echo "DATA_PROCESSING_PORT=${{ secrets.DATA_PROCESSING_PORT }}" >> .env
+          echo "MODEL_INFERENCE_PORT=${{ secrets.MODEL_INFERENCE_PORT }}" >> .env
+          echo "PREDICTIONS_COMBINER_PORT=${{ secrets.PREDICTIONS_COMBINER_PORT }}" >> .env
+          echo "WEB_APP_PORT=${{ secrets.WEB_APP_PORT }}" >> .env
+
+          # Set the hosts to be local for testing (No need for secrets here)
+          echo "DATA_RETRIEVAL_HOST"=http://data_retrieval >> .env
+          echo "DATA_PROCESSING_HOST"=http://data_processing >> .env
+          echo "MODEL_INFERENCE_HOST"=http://model_inference >> .env
+          echo "PREDICTIONS_COMBINER_HOST"=http://predictions_combiner >> .env
+          echo "WEB_APP_HOST"=http://web_app >> .env
+
+          if [ ! -f .env ]; then
+            echo "The .env file was not created"
+            exit 1
+          fi
+          
+      - name: Build and run the Docker containers
+        run: | # '--build' flag ensures that the images are rebuilt each time the workflow is run
+          docker compose up -d --build 
+        
+      - name: Stop the Docker containers
+        if: always() # Always run this step, even if the previous steps fail
+        run: |
+          docker compose down
+      
+  #     # Pushing the images to GitHub Container Registry
+  #     # NOTE: The following code works, but for fast CI/CD, pushing docker images takes a long tim.
+  #     # - name: Log in to GitHub Container Registry
+  #     #   uses: docker/login-action@v3
+  #     #   with:
+  #     #     registry: ghcr.io
+  #     #     username: ${{ github.actor }} # User that triggered the workflow
+  #     #     password: ${{ secrets.CR_PAT }} # Personal Access Token (PAT) with the 'write:packages' scope (to push packages)
+
+  #     # - name: Set environment variables
+  #     #   run: | # Dynamically set the repository owner
+  #     #     REPO_OWNER="${{ github.actor }}" # Dynamically set to the GitHub username
+  #     #     echo "REPO_OWNER=$REPO_OWNER" >> $GITHUB_ENV
+  #     #     echo "Repository Owner: $REPO_OWNER" # Print the repository owner for verification
+
+  #     # - name: Tag docker images
+  #     #   run: | # Names of services are {service-name}:{tag} e.g., "web-app:latest", pushing to the user's GitHub Container Registry not the organization's
+  #     #     docker tag data-retrieval:latest "ghcr.io/$REPO_OWNER/data-retrieval:${{ github.sha }}"
+  #     #     docker tag data-processing:latest "ghcr.io/$REPO_OWNER/data-processing:${{ github.sha }}"
+  #     #     docker tag model-inference:latest "ghcr.io/$REPO_OWNER/model-inference:${{ github.sha }}"
+  #     #     docker tag predictions-combiner:latest "ghcr.io/$REPO_OWNER/predictions-combiner:${{ github.sha }}"
+  #     #     docker tag web-app:latest "ghcr.io/$REPO_OWNER/web-app:${{ github.sha }}"
+
+  #     # - name: Push all docker images to GHCR
+  #     #   run: |
+  #     #     docker push "ghcr.io/$REPO_OWNER/data-retrieval:${{ github.sha }}"
+  #     #     docker push "ghcr.io/$REPO_OWNER/data-processing:${{ github.sha }}"
+  #     #     docker push "ghcr.io/$REPO_OWNER/model-inference:${{ github.sha }}"
+  #     #     docker push "ghcr.io/$REPO_OWNER/predictions-combiner:${{ github.sha }}"
+  #     #     docker push "ghcr.io/$REPO_OWNER/web-app:${{ github.sha }}"

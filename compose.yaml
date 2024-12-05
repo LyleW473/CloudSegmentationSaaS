@@ -1,0 +1,90 @@
+services:
+  web-app: # The name of the service
+    build: # Build the image from the Dockerfile
+      context: . # The context should be set to the root directory of the project (allows Docker to access other files at the same level as compose.yaml)
+      dockerfile: apps/web_app/Dockerfile
+    image: web-app:latest # Explicitly set the image name and tag
+    env_file: # Load the environment variables from the .env file
+      - .env
+    environment: # Set environment variables for the container
+      - IS_TESTING=false # Set the "IS_TESTING" environment variable to true if using the test database
+      - DATA_RETRIEVAL_HOST=http://data-retrieval
+      - DATA_PROCESSING_HOST=http://data-processing
+      - MODEL_INFERENCE_HOST=http://model-inference
+      - PREDICTIONS_COMBINER_HOST=http://predictions-combiner
+      - WEB_APP_HOST=http://web-app
+    ports: # Exposing the container's port to the host
+      - "8005:8005" # (TEMP: Hardcoded for now, works for local development)
+    depends_on: # Wait for the other services to be ready before starting the 'web_app' service
+      - data-retrieval
+      - data-processing
+      - model-inference
+      - predictions-combiner
+
+  data-retrieval:
+    build:
+      context: .
+      dockerfile: apps/data_retrieval/Dockerfile
+    image: data-retrieval:latest
+    env_file:
+      - .env
+    environment:
+      - IS_TESTING=false
+      - DATA_RETRIEVAL_HOST=http://data-retrieval
+      - DATA_PROCESSING_HOST=http://data-processing
+      - MODEL_INFERENCE_HOST=http://model-inference
+      - PREDICTIONS_COMBINER_HOST=http://predictions-combiner
+      - WEB_APP_HOST=http://web-app
+    ports:
+      - "${DATA_RETRIEVAL_PORT}:${DATA_RETRIEVAL_PORT}"
+  
+  data-processing:
+    build:
+      context: .
+      dockerfile: apps/data_processing/Dockerfile
+    image: data-processing:latest
+    env_file:
+      - .env
+    environment:
+      - IS_TESTING=false
+      - DATA_RETRIEVAL_HOST=http://data-retrieval
+      - DATA_PROCESSING_HOST=http://data-processing
+      - MODEL_INFERENCE_HOST=http://model-inference
+      - PREDICTIONS_COMBINER_HOST=http://predictions-combiner
+      - WEB_APP_HOST=http://web-app
+    ports:
+      - "${DATA_PROCESSING_PORT}:${DATA_PROCESSING_PORT}"
+  
+  model-inference:
+    build:
+      context: .
+      dockerfile: apps/model_inference/Dockerfile
+    image: model-inference:latest
+    env_file:
+      - .env
+    environment:
+      - IS_TESTING=false
+      - DATA_RETRIEVAL_HOST=http://data-retrieval
+      - DATA_PROCESSING_HOST=http://data-processing
+      - MODEL_INFERENCE_HOST=http://model-inference
+      - PREDICTIONS_COMBINER_HOST=http://predictions-combiner
+      - WEB_APP_HOST=http://web-app
+    ports:
+      - "${MODEL_INFERENCE_PORT}:${MODEL_INFERENCE_PORT}"
+
+  predictions-combiner:
+    build:
+      context: .
+      dockerfile: apps/predictions_combiner/Dockerfile
+    image: predictions-combiner:latest
+    env_file:
+      - .env
+    environment:
+      - IS_TESTING=false
+      - DATA_RETRIEVAL_HOST=http://data-retrieval
+      - DATA_PROCESSING_HOST=http://data-processing
+      - MODEL_INFERENCE_HOST=http://model-inference
+      - PREDICTIONS_COMBINER_HOST=http://predictions-combiner
+      - WEB_APP_HOST=http://web-app
+    ports:
+      - "${PREDICTIONS_COMBINER_PORT}:${PREDICTIONS_COMBINER_PORT}"

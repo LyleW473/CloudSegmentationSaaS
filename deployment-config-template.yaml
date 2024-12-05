@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${APP_NAME}
+  labels:
+    app: ${APP_NAME}
+spec:
+  replicas: ${NUM_REPLICAS} # 'n' replicas for the application
+  selector:
+    matchLabels:
+      app: ${APP_NAME}
+  template:
+    metadata:
+      labels:
+        app: ${APP_NAME}
+    spec:
+      containers:
+      - name: ${APP_NAME}
+        image: ${CONTAINER_IMAGE} # Image that the container will run
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: ${CONTAINER_PORT} # Port that the container listens on internally
+        envFrom: # Inject environmental variables from the ConfigMap (Separate from creating the configuration file, this is for the container to use the variables)
+        - configMapRef:
+            name: shared-config
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${APP_NAME}
+spec:
+  selector:
+    app: ${APP_NAME}
+  ports:
+  - port: ${SERVICE_PORT} # Service port (External port that clients will use to access the application
+    targetPort: ${CONTAINER_PORT} # Container port (Internal port that the service will forward traffic to)
+    protocol: TCP
+  type: ClusterIP # Only allow internal access to the service (Ingress will handle external access)

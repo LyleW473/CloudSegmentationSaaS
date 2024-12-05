@@ -1,0 +1,20 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: multi-service-ingress
+  annotations:
+    spec.ingressClassName: nginx # Use the NGINX Ingress Controller
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "300" # Set the timeout for establishing a connection to the upstream server
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300" # Set the timeout for reading a response from the upstream server
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300" # Set the timeout for sending a request to the upstream server
+spec:
+  rules:
+  - http:
+      paths:
+      - path: / # Route traffic to the Web App service
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: web-app
+            port:
+              number: ${WEB_APP_PORT}

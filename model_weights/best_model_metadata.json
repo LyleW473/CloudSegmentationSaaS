@@ -1,0 +1,1 @@
+{"best_epoch": 87, "best_loss": 0.03876405954360962, "best_iou": 0.9305939674377441, "hyperparameters": {"arch": "FPN", "encoder_name": "timm-mobilenetv3_small_minimal_100", "in_channels": 4, "out_classes": 1, "t_max": 18900, "epochs": 100, "batch_size": 32, "use_normalisation": true}}

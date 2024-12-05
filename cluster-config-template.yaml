@@ -1,0 +1,30 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
+    extraPortMappings:
+      # Mapping the ports for all of the services + the Ingress controller
+      - containerPort: 80 # Ingress controller
+        hostPort: 80
+        protocol: TCP
+      - containerPort: ${DATA_RETRIEVAL_PORT} # Data Retrieval
+        hostPort: ${DATA_RETRIEVAL_PORT}
+        protocol: TCP
+      - containerPort: ${DATA_PROCESSING_PORT} # Data Processing
+        hostPort: ${DATA_PROCESSING_PORT}
+        protocol: TCP
+      - containerPort: ${MODEL_INFERENCE_PORT} # Model Inference
+        hostPort: ${MODEL_INFERENCE_PORT}
+        protocol: TCP
+      - containerPort: ${PREDICTIONS_COMBINER_PORT} # Predictions Combiner
+        hostPort: ${PREDICTIONS_COMBINER_PORT}
+        protocol: TCP
+      - containerPort: ${WEB_APP_PORT} # Web App
+        hostPort: ${WEB_APP_PORT}
+        protocol: TCP
