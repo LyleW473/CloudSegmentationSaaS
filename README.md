@@ -74,5 +74,3 @@ Once you have accessed the web-page, you should be redirected to the login page.
 # **Example queries**
 **1. Statue of Liberty:** Site latitude = 40.6892, Site longitude = -74.0445, Time of interest = '2021-01-01/2024-01-02'  
 **2. River Thames:** Site latitude = 51.5072, Site longitude = 0.1276, Time of interest = '2021-01-01/2024-01-02'  
-
-[![Review Assignment Due Date](https://classroom.github.com/assets/deadline-readme-button-22041afd0340ce965d47ae6ef1cefeee28c7c493a6346c4f15d667ab976d596c.svg)](https://classroom.github.com/a/pa_hoUiU)
